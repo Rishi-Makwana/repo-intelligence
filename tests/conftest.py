@@ -22,6 +22,8 @@ REPOS_YAML = """\
 version: 1
 criticality_levels: [critical, important, low]
 stale_critical: {months: 6, levels: [critical]}
+jira_base_url: https://example.atlassian.net
+confluence_base_url: https://example.atlassian.net/wiki
 monorepo_folders: [packages]
 exclude_folders: [node_modules, vendor]
 repos:
