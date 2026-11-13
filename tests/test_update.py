@@ -79,7 +79,7 @@ def test_unreachable_remote_fails_loudly(settings, conn, remotes, monkeypatch, t
     assert sync.health(conn, settings)["last_runs"]["update"]["status"] == "failed"
 
 
-def test_cli_stubs_exit_non_zero(capsys, monkeypatch, tmp_path):
-    for command in ("selfcheck", "serve"):
+def test_commands_fail_loudly_without_an_index(capsys, tmp_path):
+    for command in ("selfcheck", "health"):
         assert main(["--env", str(tmp_path / "none.env"), command]) == 2
-        assert "not built yet" in capsys.readouterr().err
+        assert "does not exist" in capsys.readouterr().err

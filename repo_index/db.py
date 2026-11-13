@@ -25,8 +25,13 @@ def utc_now() -> str:
 
 
 def connect(db_path: Path | str) -> sqlite3.Connection:
-    """Autocommit connection; callers open explicit transactions with BEGIN."""
-    conn = sqlite3.connect(str(db_path), isolation_level=None)
+    """Autocommit connection; callers open explicit transactions with BEGIN.
+
+    check_same_thread=False: the MCP server runs each (synchronous, read-only) tool call in its own
+    worker thread over this one connection. Writers (init/update/vulns/selfcheck) are separate, single-
+    threaded CLI invocations, so this never risks a write racing another write.
+    """
+    conn = sqlite3.connect(str(db_path), isolation_level=None, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.enable_load_extension(True)
     sqlite_vec.load(conn)

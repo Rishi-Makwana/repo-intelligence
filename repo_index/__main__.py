@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import codemap, db, facts, llm, manifests, sync
+from . import codemap, db, facts, llm, manifests, selfcheck, server, sync, tools
 from .config import ConfigError, Integration, RepoConfig, ReposConfig, Settings, load_all, load_settings
 
 
@@ -147,13 +147,20 @@ def cmd_vulns(settings: Settings, args) -> int:
 
 
 def cmd_health(settings: Settings, args) -> int:
-    print(json.dumps(sync.health(db.open_index(settings), settings), indent=2))
+    envelope = tools.health(db.open_index(settings), settings)
+    print(json.dumps(envelope, indent=2))
     return 0
 
 
-def cmd_not_built(settings: Settings, args) -> int:
-    print(f"`{args.command}` is not built yet (BUILD.md phases 7 and 9).", file=sys.stderr)
-    return 2
+def cmd_selfcheck(settings: Settings, args) -> int:
+    summary = selfcheck.main(settings)
+    print(json.dumps(summary, indent=2))
+    return 1 if summary["failed"] else 0
+
+
+def cmd_serve(settings: Settings, args) -> int:
+    server.serve(settings)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -165,12 +172,12 @@ def main(argv: list[str] | None = None) -> int:
     update.add_argument("--repo", help="only this owner/name")
     sub.add_parser("vulns", help="refresh OSV vulnerabilities and end-of-life data")
     sub.add_parser("health", help="print per-repo freshness and last runs")
-    sub.add_parser("selfcheck", help="not built yet")
-    sub.add_parser("serve", help="not built yet")
+    sub.add_parser("selfcheck", help="run acceptance.yaml through the tools and alert on failure")
+    sub.add_parser("serve", help="run the MCP server (stdio or streamable HTTP, per MCP_TRANSPORT)")
     args = parser.parse_args(argv)
 
     commands = {"init": cmd_init, "update": cmd_update, "vulns": cmd_vulns, "health": cmd_health,
-                "selfcheck": cmd_not_built, "serve": cmd_not_built}
+                "selfcheck": cmd_selfcheck, "serve": cmd_serve}
     try:
         return commands[args.command](load_settings(args.env), args)
     except ConfigError as exc:
