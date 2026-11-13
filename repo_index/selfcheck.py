@@ -79,9 +79,10 @@ def run_selfcheck(conn: sqlite3.Connection, settings: Settings) -> dict:
 
 
 def alert(settings: Settings, summary: dict) -> None:
-    if not settings.alert_webhook_url:
-        return
+    """POSTs to ALERT_WEBHOOK_URL when there is a failure to report and a webhook is configured."""
     failed = [r for r in summary["results"] if not r["ok"]]
+    if not failed or not settings.alert_webhook_url:
+        return
     httpx.post(settings.alert_webhook_url, json={
         "text": f"repo-index selfcheck: {len(failed)}/{summary['total']} acceptance question(s) failed",
         "failed": [{"id": r["id"], "detail": r["detail"]} for r in failed]}, timeout=15)
