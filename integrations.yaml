@@ -1,0 +1,8 @@
+jira:
+  sdks: [{ecosystem: npm, name: jira.js}, {ecosystem: PyPI, name: jira}]
+  hosts: ['[a-z0-9-]+\.atlassian\.net']
+  env_vars: ['\bJIRA_[A-Z_]+\b']
+slack:
+  sdks: [{ecosystem: npm, name: "@slack/web-api"}, {ecosystem: PyPI, name: slack_sdk}]
+  hosts: ['hooks\.slack\.com']
+  env_vars: ['\bSLACK_[A-Z_]+\b']

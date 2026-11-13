@@ -1,0 +1,10 @@
+- id: critical-spring2
+  ask: "Which critical repos use Spring Boot 2?"
+  tool: search_repos
+  args: {criticality: critical, library: {name: spring-boot, version: "2."}}
+  expect: {repos_exactly: [owner/payments-api]}
+- id: autocomplete-exists
+  ask: "Do we have something like address autocomplete?"
+  tool: semantic_search
+  args: {query: address autocomplete}
+  expect: {repo_in_top: {repo: owner/address-ui, k: 3}}
