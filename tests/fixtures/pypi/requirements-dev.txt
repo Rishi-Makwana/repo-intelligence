@@ -1,0 +1,4 @@
+# tooling
+-r requirements.txt
+black==24.1.0
+flake8>=6.0  # unpinned

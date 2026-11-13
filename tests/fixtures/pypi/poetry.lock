@@ -1,0 +1,15 @@
+[[package]]
+name = "fastapi"
+version = "0.110.0"
+
+[[package]]
+name = "requests"
+version = "2.31.0"
+
+[[package]]
+name = "slack-sdk"
+version = "3.27.1"
+
+[[package]]
+name = "pytest"
+version = "8.1.1"
