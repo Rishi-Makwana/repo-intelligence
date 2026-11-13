@@ -1,10 +1,15 @@
+import hashlib
 import os
+import re
 import shutil
 import subprocess
+from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from repo_index import llm
 from repo_index.config import Settings, load_repos
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -78,9 +83,37 @@ def settings(tmp_path) -> Settings:
     (config_dir / "repos.yaml").write_text(REPOS_YAML)
     shutil.copy(CONFIG_ROOT / "integrations.yaml", config_dir / "integrations.yaml")
     shutil.copy(CONFIG_ROOT / "acceptance.yaml", config_dir / "acceptance.yaml")
-    return Settings(config_dir=config_dir, data_dir=tmp_path / "data", embed_dim=8, embed_model="fake-embed")
+    return Settings(config_dir=config_dir, data_dir=tmp_path / "data", embed_dim=8, embed_model="fake-embed",
+                    llm_model="fake-llm", anthropic_api_key="test-key")
 
 
 @pytest.fixture
 def repos_config(settings):
     return load_repos(settings.config_dir / "repos.yaml")
+
+
+def fake_vector(text: str, dim: int) -> list[float]:
+    """Bag of words hashed into `dim` buckets: texts sharing words point the same way."""
+    vector = [0.01] * dim
+    for word in re.findall(r"[a-z0-9]+", text.lower()):
+        vector[int(hashlib.sha256(word.encode()).hexdigest(), 16) % dim] += 1.0
+    return vector
+
+
+@pytest.fixture(autouse=True)
+def providers(monkeypatch):
+    """No test reaches Anthropic or Ollama. `providers` counts calls; set `.purpose` to change the LLM reply."""
+    fake = SimpleNamespace(calls=Counter(),
+                           purpose="Serves the team's example service. A second sentence that must be dropped.")
+
+    def complete(settings, system, prompt):
+        fake.calls["llm"] += 1
+        return fake.purpose
+
+    def embed_texts(settings, texts):
+        fake.calls["embed"] += 1
+        return [fake_vector(t, settings.embed_dim) for t in texts]
+
+    monkeypatch.setattr(llm, "complete", complete)
+    monkeypatch.setattr(llm, "embed_texts", embed_texts)
+    return fake

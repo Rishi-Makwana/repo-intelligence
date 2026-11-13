@@ -5,12 +5,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sqlite3
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import codemap, db, facts, manifests, sync
+from . import codemap, db, facts, llm, manifests, sync
 from .config import ConfigError, Integration, RepoConfig, ReposConfig, Settings, load_all, load_settings
 
 
@@ -24,6 +25,7 @@ class StageContext:
     files: list[str]              # git ls-files of the clone
     rows: db.Rows = field(default_factory=dict)       # merged output of the stages that ran before
     warnings: list[str] = field(default_factory=list)  # non-fatal problems, recorded as errors
+    conn: sqlite3.Connection | None = None             # for the LLM/embedding cache only; rows go through rebuild_repo
 
 
 Stage = Callable[[Path, RepoConfig, StageContext], db.Rows]
@@ -49,8 +51,19 @@ def codemap_stage(clone: Path, repo: RepoConfig, ctx: StageContext) -> db.Rows:
     return rows
 
 
+def purpose_stage(clone: Path, repo: RepoConfig, ctx: StageContext) -> db.Rows:
+    """Purpose line and embeddings; adds an embedding to the code map's feature rows in ctx.rows."""
+    files = [f for f in ctx.files if not manifests.is_excluded(f, ctx.repos_config.exclude_folders)]
+    folders = codemap.module_folders(files, ())
+    rows, warnings = llm.purpose_and_embeddings(ctx.conn, ctx.settings, clone, ctx.files,
+                                                ctx.rows.get("libraries", []), ctx.rows.get("features", []),
+                                                folders, repo.exclude_from_llm, ctx.commit_sha)
+    ctx.warnings += warnings
+    return rows
+
+
 # Order matters: later stages read earlier output from ctx.rows.
-STAGES: list[Stage] = [manifests_stage, facts_stage, codemap_stage]
+STAGES: list[Stage] = [manifests_stage, facts_stage, codemap_stage, purpose_stage]
 
 
 def run_stages(clone: Path, repo: RepoConfig, ctx: StageContext) -> db.Rows:
@@ -96,7 +109,8 @@ def run_update(settings: Settings, only_repo: str | None = None) -> dict:
             if head == indexed and seen and seen[0] == fingerprint:
                 summary["unchanged"].append(repo.repo)
                 continue
-            ctx = StageContext(settings, repos_config, integrations, head, cfg_sha, sync.tracked_files(clone))
+            ctx = StageContext(settings, repos_config, integrations, head, cfg_sha, sync.tracked_files(clone),
+                               conn=conn)
             rows = run_stages(clone, repo, ctx)
             db.rebuild_repo(conn, repo.repo, rows, indexed_sha=head)
             conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (fingerprint_key, fingerprint))
