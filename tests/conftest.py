@@ -10,6 +10,9 @@ from repo_index.config import Settings, load_repos
 FIXTURES = Path(__file__).parent / "fixtures"
 CONFIG_ROOT = Path(__file__).parent.parent
 
+# Grammars download once from the language pack's releases, then load from this cache, so later runs are offline.
+os.environ.setdefault("TREE_SITTER_LANGUAGE_PACK_CACHE_DIR", str(CONFIG_ROOT / ".cache"))
+
 REPOS_YAML = """\
 version: 1
 criticality_levels: [critical, important, low]

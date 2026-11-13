@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import db, facts, manifests, sync
+from . import codemap, db, facts, manifests, sync
 from .config import ConfigError, Integration, RepoConfig, ReposConfig, Settings, load_all, load_settings
 
 
@@ -41,8 +41,16 @@ def facts_stage(clone: Path, repo: RepoConfig, ctx: StageContext) -> db.Rows:
                                        ctx.integrations, ctx.commit_sha, ctx.config_sha, ctx.settings.max_file_kb)}
 
 
-# Order matters: later stages read earlier output from ctx.rows. Append new stages (code map, embeddings).
-STAGES: list[Stage] = [manifests_stage, facts_stage]
+def codemap_stage(clone: Path, repo: RepoConfig, ctx: StageContext) -> db.Rows:
+    rows, warnings = codemap.build_code_map(clone, ctx.files, ctx.rows.get("libraries", []),
+                                            ctx.repos_config.exclude_folders, ctx.repos_config.monorepo_folders,
+                                            ctx.commit_sha, ctx.settings.max_file_kb)
+    ctx.warnings += warnings
+    return rows
+
+
+# Order matters: later stages read earlier output from ctx.rows.
+STAGES: list[Stage] = [manifests_stage, facts_stage, codemap_stage]
 
 
 def run_stages(clone: Path, repo: RepoConfig, ctx: StageContext) -> db.Rows:
