@@ -91,7 +91,7 @@ def config_fingerprint(settings: Settings) -> str:
     return digest.hexdigest()
 
 
-def run_update(settings: Settings, only_repo: str | None = None) -> dict:
+def run_update(settings: Settings, only_repo: str | None = None, *, force: bool = False) -> dict:
     repos_config, integrations, _ = load_all(settings)
     selected = [repos_config.get(only_repo)] if only_repo else list(repos_config.repos)
     conn = db.open_index(settings)
@@ -106,7 +106,7 @@ def run_update(settings: Settings, only_repo: str | None = None) -> dict:
             indexed = conn.execute("SELECT indexed_sha FROM repos WHERE repo_id = ?", (repo.repo,)).fetchone()[0]
             fingerprint_key = f"config_fingerprint:{repo.repo}"
             seen = conn.execute("SELECT value FROM meta WHERE key = ?", (fingerprint_key,)).fetchone()
-            if head == indexed and seen and seen[0] == fingerprint:
+            if not force and head == indexed and seen and seen[0] == fingerprint:
                 summary["unchanged"].append(repo.repo)
                 continue
             ctx = StageContext(settings, repos_config, integrations, head, cfg_sha, sync.tracked_files(clone),
@@ -134,7 +134,7 @@ def cmd_init(settings: Settings, args) -> int:
 
 
 def cmd_update(settings: Settings, args) -> int:
-    summary = run_update(settings, args.repo)
+    summary = run_update(settings, args.repo, force=args.force)
     print(json.dumps(summary, indent=2))
     return 1 if summary["failed"] else 0
 
@@ -170,6 +170,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("init", help="create data/index.db and one repos row per repos.yaml entry")
     update = sub.add_parser("update", help="sync clones and rebuild changed repos")
     update.add_argument("--repo", help="only this owner/name")
+    update.add_argument("--force", action="store_true",
+                        help="reindex even when nothing changed, after upgrading this tool")
     sub.add_parser("vulns", help="refresh OSV vulnerabilities and end-of-life data")
     sub.add_parser("health", help="print per-repo freshness and last runs")
     sub.add_parser("selfcheck", help="run acceptance.yaml through the tools and alert on failure")

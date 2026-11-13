@@ -61,6 +61,13 @@ def test_routes_map_to_their_handler_file_and_line():
     assert route(rows, "GET", "/health") == ("svc/main.go", "s.Health", 11)
 
 
+def test_aspnet_minimal_api_routes_map_to_their_handler():
+    rows = code_map()
+    assert route(rows, "GET", "/resources/{resourceId:guid}") == (
+        "src/Api/Endpoints/GetResource.cs", "GetResource.Handle", 6)
+    assert route(rows, "POST", "/ping") == ("src/Api/Endpoints/GetResource.cs", None, 19)
+
+
 def test_nextjs_file_routes_only_when_the_repo_uses_next():
     rows = code_map()
     assert route(rows, "GET", "/orders/[id]")[0] == "apps/web/app/orders/[id]/page.tsx"

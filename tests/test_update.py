@@ -38,6 +38,11 @@ def test_update_indexes_every_repo_then_second_run_is_a_no_op(settings, conn, re
     assert run_update(settings)["unchanged"] == ["owner/payments-api", "owner/address-ui"]
 
 
+def test_force_reindexes_an_unchanged_repo(settings, conn, remotes):
+    run_update(settings)
+    assert run_update(settings, "owner/address-ui", force=True)["rebuilt"] == ["owner/address-ui"]
+
+
 def test_push_triggers_rebuild_of_only_that_repo(settings, conn, remotes):
     run_update(settings)
     new_sha = push_commit(remotes["owner/address-ui"], "requirements.txt", "flask==3.0.0\n")

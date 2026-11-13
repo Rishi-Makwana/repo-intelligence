@@ -202,9 +202,27 @@ def _line_routes(path: str, text: str, symbols: list[Symbol], language: str) -> 
     return routes
 
 
+MINIMAL_API = re.compile(r'\.Map(Get|Post|Put|Delete|Patch)\(\s*@?"([^"]*)"\s*,\s*([A-Za-z_][\w.]*)?')
+
+
+def _minimal_api_routes(path: str, text: str, symbols: list[Symbol]) -> list[dict]:
+    routes = []
+    for number, line_text in enumerate(text.splitlines(), 1):
+        for match in MINIMAL_API.finditer(line_text):
+            # ponytail: MapGroup("/api") prefixes are set in another file and are not applied;
+            # the live agent confirms full paths. Resolve groups if prefix-less routes mislead.
+            handler = match.group(3)
+            owners = [s for s in symbols if s.kind == "class" and s.line < number <= s.end_line]
+            if handler and owners and "." not in handler:
+                handler = f"{owners[-1].name}.{handler}"
+            routes.append(_route(match.group(1), match.group(2) or "/", path, handler, number, path))
+    return routes
+
+
 def code_routes(path: str, text: str, symbols: list[Symbol], language: str) -> list[dict]:
     if language == "csharp":
-        return _annotated_routes(path, text, symbols, _scan_aspnet, ("/", "~/"))
+        return (_annotated_routes(path, text, symbols, _scan_aspnet, ("/", "~/"))
+                + _minimal_api_routes(path, text, symbols))
     if language == "java":
         return _annotated_routes(path, text, symbols, _scan_spring, ())
     return _line_routes(path, text, symbols, language)
