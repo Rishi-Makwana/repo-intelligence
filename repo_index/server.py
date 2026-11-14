@@ -44,12 +44,15 @@ def build_server(conn: sqlite3.Connection, settings: Settings) -> MCPServer:
                         framework: str | None = None, integration: str | None = None,
                         criticality: str | None = None, owner: str | None = None, jira_project: str | None = None,
                         confluence_space: str | None = None, vuln_min_severity: str | None = None,
-                        eol_only: bool = False, limit: int = 10) -> dict:
+                        eol_only: bool = False, limit: int = 10, repo: str | None = None,
+                        kind: str | None = None) -> dict:
         """Rank code map and purpose items by meaning. rank is an ordering, not a confidence. Weak or
-        empty results mean: escalate to the repo-live-search agent."""
+        empty results mean: escalate to the repo-live-search agent. Results are shared evenly between
+        repos, so do not read the repo with more hits as the place a change belongs. Narrow with `repo`
+        and `kind`: route for API endpoints, ui_text for screens by the words on them."""
         return tools.semantic_search(conn, settings, query, language, library, framework, integration,
                                      criticality, owner, jira_project, confluence_space, vuln_min_severity,
-                                     eol_only, limit)
+                                     eol_only, limit, repo=repo, kind=kind)
 
     @server.tool(structured_output=False)
     def get_repo(repo: str) -> dict:

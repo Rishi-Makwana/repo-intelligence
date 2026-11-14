@@ -246,20 +246,30 @@ def semantic_search(conn: sqlite3.Connection, settings: Settings, query: str, la
                     library: dict | None = None, framework: str | None = None, integration: str | None = None,
                     criticality: str | None = None, owner: str | None = None, jira_project: str | None = None,
                     confluence_space: str | None = None, vuln_min_severity: str | None = None,
-                    eol_only: bool = False, limit: int = 10) -> dict:
-    """Rank features (routes, OpenAPI operations, README headings, folders, purpose) by meaning.
-    rank is an ordering only, not a confidence. Weak or empty results mean: escalate to live search."""
+                    eol_only: bool = False, limit: int = 10, *, repo: str | None = None,
+                    kind: str | None = None) -> dict:
+    """Rank features (routes, OpenAPI operations, README headings, screen text, folders, purpose) by
+    meaning, optionally within one repo or one kind (route, ui_text, ...). rank is an ordering only, not
+    a confidence. Weak or empty results mean: escalate to live search."""
     repos, _, warnings = _filter_repos(conn, settings, language, library, framework, integration, criticality,
                                        owner, jira_project, confluence_space, vuln_min_severity, eol_only)
+    if repo is not None:
+        repos = [r for r in repos if r == _resolve_repo(conn, repo)]
     hits = []
     if repos:
         vector = sqlite_vec.serialize_float32(llm.embed_query(conn, settings, query))
         marks = ",".join("?" for _ in repos)
+        # Each repo gets an equal share, so a repo with many features (one per screen) cannot push the
+        # others out of the results. Which repo has more hits therefore says nothing about where a change belongs.
+        share = -(-limit // len(repos))
         # ponytail: exact scan over every feature vector; fine for ~10 repos, use vec0 KNN (MATCH) if it gets slow.
         hits = conn.execute(
-            f"SELECT f.*, vec_distance_cosine(v.embedding, ?) AS distance FROM features f "
-            f"JOIN vec_features v ON v.rowid = f.id WHERE f.repo_id IN ({marks}) ORDER BY distance, f.id LIMIT ?",
-            [vector, *repos, limit]).fetchall()
+            f"SELECT * FROM (SELECT f.*, vec_distance_cosine(v.embedding, ?) AS distance, ROW_NUMBER() OVER "
+            f"(PARTITION BY f.repo_id ORDER BY vec_distance_cosine(v.embedding, ?), f.id) AS place "
+            f"FROM features f JOIN vec_features v ON v.rowid = f.id "
+            f"WHERE f.repo_id IN ({marks}) AND (? IS NULL OR f.kind = ?)) "
+            f"WHERE place <= ? ORDER BY distance, id LIMIT ?",
+            [vector, vector, *repos, kind, kind, share, limit]).fetchall()
     rows = _repo_rows(conn)
     results, provenance = [], []
     for rank, hit in enumerate(hits, 1):

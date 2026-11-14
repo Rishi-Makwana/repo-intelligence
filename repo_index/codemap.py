@@ -311,6 +311,37 @@ def readme_headings(path: str, text: str) -> list[dict]:
     return headings
 
 
+UI_TEXT_ATTRIBUTES = {"placeholder", "aria-label", "title", "label", "alt"}
+UI_TEXT_MAX = 300
+
+
+def ui_text(path: str, source: bytes, language: str) -> list[dict]:
+    """One feature per JSX file: the words a user sees on that screen (element text and a few labelling
+    attributes), so a plain-language description of a screen can find the file that draws it."""
+    # ponytail: literal strings only. Text from variables, translation keys or the server is not seen,
+    # and styling has no words to match. Follow imports to shared copy files if screens go unmatched.
+    words: list[str] = []
+    first_line = None
+    stack = [tslp.get_parser(language).parse(source).root_node]
+    while stack:
+        node = stack.pop()
+        text = None
+        if node.type == "jsx_text":
+            text = node.text.decode("utf-8", "replace")
+        elif node.type == "jsx_attribute" and node.children and node.children[-1].type == "string" \
+                and node.children[0].text.decode("utf-8", "replace") in UI_TEXT_ATTRIBUTES:
+            text = node.children[-1].text.decode("utf-8", "replace")[1:-1]
+        text = " ".join((text or "").split())
+        if len(text) >= 3 and any(c.isalpha() for c in text) and text not in words:
+            words.append(text)
+            first_line = first_line or node.start_point[0] + 1
+        stack.extend(reversed(node.children))
+    if not words:
+        return []
+    return [{"kind": "ui_text", "text": f"{path}: {' · '.join(words)}"[:len(path) + 2 + UI_TEXT_MAX],
+             "path": path, "line": first_line}]
+
+
 def module_folders(files: list[str], monorepo_folders) -> list[str]:
     """Top-level folders, plus each component folder under a monorepo folder (packages/x)."""
     folders = set()
@@ -374,6 +405,8 @@ def build_code_map(root: Path, files: list[str], libraries: list[dict], exclude_
         symbols += [s.row(commit_sha) for s in file_symbols]
         text = source.decode("utf-8", "replace")
         routes += code_routes(path, text, file_symbols, language)
+        if suffix in (".tsx", ".jsx") and ".test." not in name and ".spec." not in name:
+            features += ui_text(path, source, language)
         if language == "csharp":
             group_prefixes.update(p for p in MAP_GROUP.findall(text) if p.strip("/"))
         if uses_next and language in ("typescript", "tsx", "javascript"):

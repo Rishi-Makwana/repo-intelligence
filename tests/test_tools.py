@@ -136,6 +136,16 @@ def test_empty_semantic_search_warns_to_escalate_to_live_search(settings, conn):
     assert tools.NOT_FOUND in result["warnings"]
 
 
+def test_semantic_search_shares_results_between_repos_and_narrows_by_repo_and_kind(settings, conn):
+    counts = {}
+    for hit in tools.semantic_search(conn, settings, query="address", limit=4)["data"]["results"]:
+        counts[hit["repo"]] = counts.get(hit["repo"], 0) + 1
+    assert counts["owner/address-ui"] == 2 and "owner/payments-api" in counts  # address-ui has far more features
+    narrowed = tools.semantic_search(conn, settings, query="address", repo="address-ui", kind="route")
+    assert narrowed["data"]["results"]
+    assert {(h["repo"], h["kind"]) for h in narrowed["data"]["results"]} == {("owner/address-ui", "route")}
+
+
 def test_get_repo_includes_facts_libraries_vulns_eol_routes_and_links_with_provenance(settings, conn):
     result = tools.get_repo(conn, settings, repo="owner/payments-api")
     data = result["data"]

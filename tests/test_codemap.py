@@ -107,6 +107,14 @@ def test_features_cover_readme_headings_h1_to_h3_and_module_folders():
     assert all(f["commit_sha"] == "c0ffee" for f in rows["features"])
 
 
+def test_a_screen_file_becomes_one_feature_holding_the_words_a_user_sees():
+    features = [f for f in code_map()["features"] if f["kind"] == "ui_text"]
+    assert features == [{
+        "kind": "ui_text", "path": "apps/web/components/EmptyCart.tsx", "line": 3, "commit_sha": "c0ffee",
+        "text": "apps/web/components/EmptyCart.tsx: Shopping cart · Your cart is empty · "
+                "Add something to get started · Search products"}]
+
+
 def test_unsupported_languages_get_folder_rows_and_excluded_or_large_files_are_skipped():
     rows = code_map()
     assert [s for s in rows["symbols"] if s["kind"] == "module"] == [

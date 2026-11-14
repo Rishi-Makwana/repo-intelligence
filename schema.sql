@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS routes (
 
 CREATE TABLE IF NOT EXISTS features (  -- what semantic_search ranks
   id INTEGER PRIMARY KEY, repo_id TEXT NOT NULL,
-  kind TEXT NOT NULL,                -- purpose|openapi_op|route|readme_heading|module
+  kind TEXT NOT NULL,                -- purpose|openapi_op|route|readme_heading|module|ui_text
   text TEXT NOT NULL, path TEXT, line INTEGER, commit_sha TEXT NOT NULL);
 CREATE VIRTUAL TABLE IF NOT EXISTS vec_features USING vec0(embedding float[{EMBED_DIM}]);  -- rowid = features.id
 
