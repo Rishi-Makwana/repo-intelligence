@@ -203,20 +203,31 @@ def _line_routes(path: str, text: str, symbols: list[Symbol], language: str) -> 
 
 
 MINIMAL_API = re.compile(r'\.Map(Get|Post|Put|Delete|Patch)\(\s*@?"([^"]*)"\s*,\s*([A-Za-z_][\w.]*)?')
+MAP_GROUP = re.compile(r'\.MapGroup\(\s*@?"([^"]*)"')
 
 
 def _minimal_api_routes(path: str, text: str, symbols: list[Symbol]) -> list[dict]:
     routes = []
     for number, line_text in enumerate(text.splitlines(), 1):
         for match in MINIMAL_API.finditer(line_text):
-            # ponytail: MapGroup("/api") prefixes are set in another file and are not applied;
-            # the live agent confirms full paths. Resolve groups if prefix-less routes mislead.
             handler = match.group(3)
             owners = [s for s in symbols if s.kind == "class" and s.line < number <= s.end_line]
             if handler and owners and "." not in handler:
                 handler = f"{owners[-1].name}.{handler}"
-            routes.append(_route(match.group(1), match.group(2) or "/", path, handler, number, path))
+            route = _route(match.group(1), match.group(2) or "/", path, handler, number, path)
+            routes.append({**route, "minimal_api": True})
     return routes
+
+
+def apply_group_prefix(routes: list[dict], group_prefixes: set[str]) -> None:
+    """Prefix minimal-API routes with the repo's MapGroup path, and drop the marker key."""
+    # ponytail: only the one-group case ("/api" around everything) is resolved, and it is applied to every
+    # minimal-API route. With several groups the routes stay unprefixed and the live agent confirms the
+    # path. Trace which group each endpoint is mapped on if a repo mixes grouped and ungrouped routes.
+    prefix = next(iter(group_prefixes)) if len(group_prefixes) == 1 else ""
+    for route in routes:
+        if route.pop("minimal_api", False) and prefix:
+            route["route"] = _join(prefix, route["route"], ())
 
 
 def code_routes(path: str, text: str, symbols: list[Symbol], language: str) -> list[dict]:
@@ -334,6 +345,7 @@ def build_code_map(root: Path, files: list[str], libraries: list[dict], exclude_
     routes: list[dict] = []
     features: list[dict] = []
     unparsed_folders: set[str] = set()
+    group_prefixes: set[str] = set()
 
     for path in files:
         suffix = PurePosixPath(path).suffix.lower()
@@ -362,12 +374,15 @@ def build_code_map(root: Path, files: list[str], libraries: list[dict], exclude_
         symbols += [s.row(commit_sha) for s in file_symbols]
         text = source.decode("utf-8", "replace")
         routes += code_routes(path, text, file_symbols, language)
+        if language == "csharp":
+            group_prefixes.update(p for p in MAP_GROUP.findall(text) if p.strip("/"))
         if uses_next and language in ("typescript", "tsx", "javascript"):
             routes += nextjs_routes(path, file_symbols)
 
     # ponytail: unsupported languages get one module row per folder; add a grammar to PARSED_LANGUAGES to go deeper.
     symbols += [{"path": folder, "kind": "module", "name": folder, "signature": None, "line": 0,
                  "commit_sha": commit_sha} for folder in sorted(unparsed_folders)]
+    apply_group_prefix(routes, group_prefixes)
     for route in routes:
         kind = "openapi_op" if route["source"] == "openapi" else "route"
         features.append({"kind": kind, "text": _route_text(route), "path": route["handler_path"] or route["source_path"],

@@ -14,7 +14,7 @@ AGENT_FILE = ROOT / ".claude/agents/repo-live-search.md"
 def test_agent_file_has_the_frontmatter_and_four_part_answer_shape():
     text = AGENT_FILE.read_text()
     assert text.startswith("---\nname: repo-live-search\n")
-    assert "tools: Read, Grep, Glob, Bash" in text
+    assert "tools: Read, Grep, Glob\n" in text  # no shell: the commit comes from the brief, not from git
     for heading in ("**Answer:**", "**Evidence:**", "**Searched but not found:**", "**Confidence limits:**"):
         assert heading in text
 

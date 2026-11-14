@@ -1,4 +1,4 @@
-from repo_index.codemap import build_code_map, extract_symbols, openapi_routes
+from repo_index.codemap import apply_group_prefix, build_code_map, extract_symbols, openapi_routes
 from tests.conftest import FIXTURES, fixture_files
 
 ROOT = FIXTURES / "codemap"
@@ -61,11 +61,19 @@ def test_routes_map_to_their_handler_file_and_line():
     assert route(rows, "GET", "/health") == ("svc/main.go", "s.Health", 11)
 
 
-def test_aspnet_minimal_api_routes_map_to_their_handler():
+def test_aspnet_minimal_api_routes_map_to_their_handler_under_the_group_prefix():
     rows = code_map()
-    assert route(rows, "GET", "/resources/{resourceId:guid}") == (
+    assert route(rows, "GET", "/api/resources/{resourceId:guid}") == (
         "src/Api/Endpoints/GetResource.cs", "GetResource.Handle", 6)
-    assert route(rows, "POST", "/ping") == ("src/Api/Endpoints/GetResource.cs", None, 19)
+    assert route(rows, "POST", "/api/ping") == ("src/Api/Endpoints/GetResource.cs", None, 19)
+    assert not [r for r in rows["routes"] if "minimal_api" in r]
+    assert route(rows, "GET", "/api/Orders/{id}")[1] == "OrdersController.GetById"  # controllers are not regrouped
+
+
+def test_group_prefix_is_not_guessed_when_a_repo_has_several_groups():
+    routes = [{"route": "/ping", "minimal_api": True}]
+    apply_group_prefix(routes, {"/api", "/internal"})
+    assert routes == [{"route": "/ping"}]
 
 
 def test_nextjs_file_routes_only_when_the_repo_uses_next():

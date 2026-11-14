@@ -149,7 +149,7 @@ def test_get_repo_includes_facts_libraries_vulns_eol_routes_and_links_with_prove
 
 
 def test_code_map_returns_symbols_and_routes_filtered_by_prefix_and_kind(settings, conn):
-    result = tools.code_map(conn, settings, repo="owner/address-ui", path_prefix="src/Api")
+    result = tools.code_map(conn, settings, repo="owner/address-ui", path_prefix="src/Api/Controllers")
     assert result["data"]["symbols"][0]["name"] == "OrdersController"
     routes = tools.code_map(conn, settings, repo="owner/address-ui", kind="route")["data"]
     assert routes["symbols"] == [] and routes["routes"]
