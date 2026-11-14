@@ -105,6 +105,21 @@ def test_find_library_users_reports_version_distribution_and_unresolved(settings
     assert web["data"]["version_distribution"] == {"14.2.3": 1}
 
 
+def test_find_library_users_falls_back_to_a_family_name_with_a_warning(settings, conn):
+    result = tools.find_library_users(conn, settings, name="spring-boot")
+    assert "org.springframework.boot:spring-boot-starter-web" in [r["library"] for r in result["data"]["results"]]
+    assert any("named exactly 'spring-boot'" in w for w in result["warnings"])
+    assert not any("named exactly" in w for w in tools.find_library_users(conn, settings, name="next")["warnings"])
+
+
+def test_a_bare_repo_name_resolves_to_the_indexed_repo(settings, conn):
+    entry = tools.handoff(conn, settings, question="anything", repos=["Address-UI"], paths=[])["data"]["repos"][0]
+    assert entry["repo"] == "owner/address-ui" and entry["clone_path"].endswith("owner__address-ui")
+    assert entry["indexed_sha"] is not None
+    assert tools.get_repo(conn, settings, repo="payments-api")["data"]["repo"] == "owner/payments-api"
+    assert tools.code_map(conn, settings, repo="address-ui", kind="route")["data"]["routes"]
+
+
 def test_a_stale_repo_is_flagged_true_with_a_warning_in_every_envelope(settings, conn):
     result = tools.search_repos(conn, settings)
     assert "owner/address-ui" in result["stale_repos"]

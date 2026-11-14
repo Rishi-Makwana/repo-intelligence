@@ -60,6 +60,15 @@ def _repo_rows(conn: sqlite3.Connection) -> dict[str, sqlite3.Row]:
     return {row["repo_id"]: row for row in conn.execute("SELECT * FROM repos ORDER BY repo_id")}
 
 
+def _resolve_repo(conn: sqlite3.Connection, repo: str) -> str:
+    """Callers often pass the bare repo name; map it to owner/name when exactly one indexed repo has it."""
+    rows = _repo_rows(conn)
+    if repo in rows:
+        return repo
+    matches = [r for r in rows if r.split("/")[-1].lower() == repo.split("/")[-1].lower()]
+    return matches[0] if len(matches) == 1 else repo
+
+
 def _facts(conn: sqlite3.Connection, repo: str) -> dict[str, sqlite3.Row]:
     return {row["key"]: row for row in conn.execute("SELECT * FROM facts WHERE repo_id = ?", (repo,))}
 
@@ -202,9 +211,16 @@ def find_library_users(conn: sqlite3.Connection, settings: Settings, name: str, 
     """Every repo declaring a library (Maven also matches by artifactId), with resolved versions."""
     rows = _repo_rows(conn)
     results, provenance, distribution, unresolved = [], [], {}, 0
-    for row in conn.execute("SELECT * FROM libraries ORDER BY repo_id, manifest_path"):
-        if not _library_name_matches(name, ecosystem, row):
-            continue
+    libraries = conn.execute("SELECT * FROM libraries ORDER BY repo_id, manifest_path").fetchall()
+    matched = [r for r in libraries if _library_name_matches(name, ecosystem, r)]
+    family = []
+    if not matched:
+        # A family name ("opentelemetry") has no exact row; its packages are "OpenTelemetry.Api", "@opentelemetry/api".
+        matched = [r for r in libraries if name.lower() in r["name"].lower()
+                   and (not ecosystem or r["ecosystem"].lower() == ecosystem.lower())]
+        if matched:
+            family = [f"no library is named exactly {name!r}; showing libraries whose name contains it"]
+    for row in matched:
         resolved = row["version_resolved"]
         if version and not _version_matches(version, resolved):
             unresolved += resolved is None
@@ -217,7 +233,7 @@ def find_library_users(conn: sqlite3.Connection, settings: Settings, name: str, 
                         "version_declared": row["version_declared"], "version_resolved": resolved or "unresolved",
                         "manifest_path": row["manifest_path"], "stale": _is_stale(rows[row["repo_id"]], settings)})
         provenance.append(_prov(row["repo_id"], f"library:{row['name']}", row["manifest_path"], row["commit_sha"]))
-    warnings = [] if results else [NOT_FOUND]
+    warnings = family if results else [NOT_FOUND]
     if version and unresolved:
         warnings.append(f"{unresolved} declaration(s) have unresolved versions and were not matched against "
                         f"version {version!r}")
@@ -279,6 +295,7 @@ def _links(repo: str, facts: dict, settings: Settings) -> tuple[dict, list[dict]
 
 def get_repo(conn: sqlite3.Connection, settings: Settings, repo: str) -> dict:
     """Everything indexed about one repo, each item with its source path and commit."""
+    repo = _resolve_repo(conn, repo)
     row = _repo_rows(conn).get(repo)
     if row is None:
         return _envelope(conn, settings, None, warnings=[f"{repo} is not in the index; check repos.yaml"])
@@ -315,6 +332,7 @@ def code_map(conn: sqlite3.Connection, settings: Settings, repo: str, path_prefi
              kind: str | None = None, limit: int = 200) -> dict:
     """Classes, functions, methods (or folder `module` rows) and routes with path and line.
     kind is class|function|method|module|route."""
+    repo = _resolve_repo(conn, repo)
     prefix = path_prefix or ""
     symbols, routes = [], []
     if kind != "route":
@@ -344,6 +362,8 @@ def vulnerabilities(conn: sqlite3.Connection, settings: Settings, repo: str | No
     """Known vulnerabilities at or above min_severity (default OSV_MIN_SEVERITY; UNKNOWN always shown), and
     libraries not checked because their version is unresolved."""
     minimum = (min_severity or settings.osv_min_severity).upper()
+    if repo is not None:
+        repo = _resolve_repo(conn, repo)
     repos = [r for r in _repo_rows(conn) if repo in (None, r)]
     if criticality is not None:
         repos, _, _ = _filter_repos(conn, settings, criticality=criticality)
@@ -428,6 +448,8 @@ def handoff(conn: sqlite3.Connection, settings: Settings, question: str, repos: 
     rows = _repo_rows(conn)
     if repos is None:
         repos = list(dict.fromkeys(h["repo"] for h in hits))[:HANDOFF_MAX_REPOS] or list(rows)
+    else:
+        repos = [_resolve_repo(conn, r) for r in repos]
     if paths is not None:
         start_paths = [{"repo": r, "path": p, "line": None} for r in repos for p in paths]
     else:
